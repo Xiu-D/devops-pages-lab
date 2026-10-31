@@ -257,10 +257,15 @@ def main():
     check_structure(pages)
     check_links(a.site, a.base_path, pages, not a.no_external)
 
+    in_actions = os.environ.get("GITHUB_ACTIONS") == "true"
     for w in warnings:
         print("WARN  " + w)
+        if in_actions:
+            print(f"::warning title=Pages gate::{w}")
     for e in errors:
         print("FAIL  " + e)
+        if in_actions:
+            print(f"::error title=Pages gate::{e}")
     if errors:
         print(f"\nGATE CLOSED: {len(errors)} problem(s). Deploy is blocked.")
         return 1
