@@ -1,0 +1,110 @@
+name: Gated deploy to Pages
+
+# build -> validate -> deploy
+# The deploy job needs the validate job, so a site that fails validation is
+# never published: the live site keeps serving the last good version.
+on:
+  push:
+    branches: [main]        # includes the activity-log bot's README commits
+  pull_request:
+    branches: [main]        # build + validate only, never deploys
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; never cancel a deploy that is already running.
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      base_path: ${{ steps.pages.outputs.base_path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Stamp the build version
+        run: |
+          printf '%s\n' "$GITHUB_SHA" > version.txt
+          echo "Building commit $GITHUB_SHA"
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+
+      - name: Upload built site for validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: _site
+          retention-days: 7
+
+  validate:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate (markers, HTML, links)
+        run: |
+          set -o pipefail
+          python3 scripts/validate_site.py \
+            --site _site \
+            --readme README.md \
+            --base-path "${{ needs.build.outputs.base_path }}" \
+            | tee validate.log
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Validation gate"
+            echo '```'
+            cat validate.log 2>/dev/null || echo "validator did not run"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: validate
+    # PRs only run the gate; only main is published.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download validated site
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+
+      - name: Package for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
