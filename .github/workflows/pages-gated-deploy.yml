@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       base_path: ${{ steps.pages.outputs.base_path }}
+      base_url: ${{ steps.pages.outputs.base_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +72,7 @@ jobs:
             --site _site \
             --readme README.md \
             --base-path "${{ needs.build.outputs.base_path }}" \
+            --site-url "${{ needs.build.outputs.base_url }}" \
             | tee validate.log
       - name: Write summary
         if: always()
