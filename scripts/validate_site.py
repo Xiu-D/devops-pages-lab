@@ -2,6 +2,8 @@
 """Validate a built Jekyll site before it is deployed to GitHub Pages.
 
 The deploy job only runs if this script exits 0. Checks:
+  0. Self links      - absolute links to the site's own URL are checked inside the
+                       new build (a new page is not live until it passes).
   1. README markers  - README.md has the activity markers, in order, with entries.
   2. Homepage        - _site/index.html exists and rendered the README include.
   3. HTML structure  - every page has the basic skeleton, balanced tags, unique ids.
@@ -183,9 +185,10 @@ def resolve_internal(site, base_path, page_rel, url):
     return full, parts.fragment
 
 
-def check_links(site, base_path, pages, check_external):
+def check_links(site, base_path, site_url, pages, check_external):
     external = {}
     n_int = 0
+    site_url = site_url.rstrip("/")
     for rel, pg in pages.items():
         for tag, attr, url, line in pg.links:
             u = url.strip()
@@ -193,6 +196,11 @@ def check_links(site, base_path, pages, check_external):
                 continue
             if u.startswith("//"):
                 u = "https:" + u
+            # An absolute link to this site itself (canonical/og:url, header link)
+            # must be checked against the NEW build, not the old live site:
+            # a new page is not live until this gate lets it through.
+            if site_url and (u == site_url or u.startswith(site_url + "/") or u.startswith(site_url + "#")):
+                u = base_path.rstrip("/") + "/" + u[len(site_url):].lstrip("/")
             if u.startswith(("http://", "https://")):
                 external.setdefault(u.split("#")[0], []).append(f"{rel}:{line}")
                 continue
@@ -247,6 +255,7 @@ def main():
     ap.add_argument("--site", default="_site")
     ap.add_argument("--readme", default="README.md")
     ap.add_argument("--base-path", default="")
+    ap.add_argument("--site-url", default="", help="published URL; links to it are checked inside --site")
     ap.add_argument("--no-external", action="store_true")
     a = ap.parse_args()
 
@@ -255,7 +264,7 @@ def main():
     pages = parse_pages(a.site)
     check_homepage(a.site, pages)
     check_structure(pages)
-    check_links(a.site, a.base_path, pages, not a.no_external)
+    check_links(a.site, a.base_path, a.site_url, pages, not a.no_external)
 
     in_actions = os.environ.get("GITHUB_ACTIONS") == "true"
     for w in warnings:
