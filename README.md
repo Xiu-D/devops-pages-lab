@@ -3,6 +3,7 @@
 NTUST Information Management · DevOps (MI3118701) · Student ID B11309022
 
 This page is generated from this repository's README.md and published with GitHub Pages.
+See the [release notes](release-notes.html) for what changed in each deploy.
 The activity section below is refreshed automatically by a scheduled GitHub Actions workflow.
 
 ## Recent activity
